@@ -7,86 +7,37 @@ import re
 user_agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36'
 
 """
-Secondary scraping functions
+Tapology scraping functions
     Take either soup objects or html (in the form of request.get(link).content) 
     and return dataframes
 """
 
-def get_ufc_events(html_content):
+def create_events_df(html_content):
     """
     input: html of tapology events search results
     output: dataframe of events
     """
     #the following three lines will get the intitial dataframe that lacks links
-    df_results = pd.read_html(html_content) #grab all tables and turn them into dataframes
-    df_results = df_results[0] #grab the first dataframe in that list
-    df_results = df_results.dropna(axis=1,how='all') #drop all rows with all null values    
-    df_results.columns = ['event', 'name', 'date', 'bouts']#clean columns
+    events_df = pd.read_html(html_content) #grab all tables and turn them into dataframes
+    events_df = events_df[0] #grab the first dataframe in that list
+    events_df = events_df.dropna(axis=1,how='all') #drop all rows with all null values    
+    events_df.columns = ['event', 'name', 'date', 'bouts']#clean columns
     
     #now I will get the links
     soup = BeautifulSoup(html_content, 'html.parser')
     results_table = soup.find('table')
-    links = get_event_links(results_table) #get the list of links
-    df_results['link'] = links #add links to dataframe
+    events_df['link'] = get_event_links(results_table) #add links to dataframe
     
-    # now I will filter out all events that were cancelled, 
-    # have not happened yet, or are not from the UFC
-    df_results = keep_ufc_events_only(df_results)
-    df_results = keep_previous_events_only(df_results)
-    df_results = remove_cancelled_bouts(df_results)
+    # now I will filter out all events that are not from the UFC, 
+    # have not happened yet, or were cancelled
+    events_df = keep_ufc_events_only(events_df)
+    events_df = keep_previous_events_only(events_df)
+    events_df = remove_cancelled_events(events_df)
     
-    return df_results
-    
-
-def get_missing_event_info(event_soup, event_link):
-    """
-    takes the link to an event page and returns a dataframe with the info 
-    that is not on the event dataframe by default.
-    input: soup of event webage, event_link
-    output: dataframe with missing info
-    """
-    div = event_soup.find(class_="details details_with_poster clearfix") #grab top header
-    event_info_elem = div.find('ul') #grab first list in top header
-    info_list = event_info_elem.get_text().split('\n\n\n')#turn it into text and split into list
-    
-    info_list = clean_info_list(info_list)
-    
-    info_df = info_list_to_df(info_list, event_link)
-    info_df.columns = ['location', 'venue', 'enclosure', 'link', 'start_time']
-    return info_df
-
-
-def create_bouts_table(event_soup, event_link):
-    """
-    input: beautiful soup of the event page
-    output: dataframe with list of bouts and links to the bout pages.
-    """
-    
-    fightCard_element = event_soup.find(class_='fightCard')
-    
-    df_card = get_initial_bout_df(fightCard_element)
-    df_card['link'] = get_links(fightCard_element)
-    df_card['event_link'] = event_link
-    
-    return df_card
-
-   
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    return events_df
 """
 Parsing functions
 """
-
 def get_event_links(results_table):
     """
     input: a table element from a soup object
@@ -97,90 +48,89 @@ def get_event_links(results_table):
     links = [row.find('a').get('href') for row in rows]
     return links
 
-def keep_ufc_events_only(df_results):
+def keep_ufc_events_only(events_df):
     """
     input: dataframe of event search results
     output: dataframe with only ufc events
     """
-    mask=df_results['event'].map(is_ufc)
-    ufc_only = df_results[mask]
+    mask=events_df['event'].map(is_ufc)
+    ufc_only = events_df[mask]
     ufc_only.reset_index()
     return ufc_only
 
-def keep_previous_events_only(df_results):
+def keep_previous_events_only(events_df):
     """
     input: dataframe of event search results
     output: dataframe with only events that were scheduled in the past
     """
-    df_results['date'] = pd.to_datetime(df_results['date']) #make the date column a datetime object
+    events_df['date'] = pd.to_datetime(events_df['date']) #make the date column a datetime object
     today = pd.to_datetime('today') #get today's date
     #get time delta for 1 day and subtract it from today
     yesterday = today - pd.to_timedelta(1, unit='days')
     
-    mask=df_results['date'] < yesterday
-    previous_events = df_results[mask]
+    mask=events_df['date'] < yesterday
+    previous_events = events_df[mask]
     previous_events.reset_index()
     return previous_events
 
-def remove_cancelled_bouts(df_results):
+def remove_cancelled_events(events_df):
     """
     input: dataframe of event search results
     output: dataframe with only events that were not cancelled
     """
-    mask=df_results['bouts'] > 0
-    not_cancelled = df_results[mask]
+    mask=events_df['bouts'] > 0
+    not_cancelled = events_df[mask]
     not_cancelled.reset_index()
     return not_cancelled
-
-def clean_info_list(info_list):
-    """
-    input: info_list
-    output: info_list with no empty elements
-    """
-    new_list = [] #fields with no info do not have a colon followed by a new line, so i will take those out
-    for item in info_list:
-        if ':\n' in item:
-            new_list.append(item)
-    info_list = '\n'.join(new_list).split('\n')
-    clean_info_list = list(filter(lambda item: item != '', info_list))
-
-    return clean_info_list
-
-def info_list_to_df(info_list, event_link):
-    """
-    input: clean info_list
-    output: dataFrame with: start_time, venue, location, enclosure and link
-    """
-    start_time = info_list.pop(0)#take date out from top of list
-    info_list = group(info_list, 2) #group it into a list of 2 elem lists
-    info_dict = dict(info_list) #turn 2d list into dictionary for the create_info_df function
-    info_df = create_info_df(info_dict, start_time, event_link)
-    return info_df
-
-def create_info_df(info_dict, start_time, event_link):
-    """
-    Input: a dictionary made from the event info list, 
-           a start time string, 
-           and an event_link string
-    Output: dataFrame with: start_time, venue, location, enclosure and link
-    """
-    info_df = pd.DataFrame(info_dict, index=[0]) #zipped the group into a dictionary, needs index param to work
     
-    relevent_df = info_df.loc[:, ['Location:', 'Venue:', 'Enclosure:']] #remove all irrelevent data
+"""
+The previous function does not contain all event info simply because
+that info is not available on the search page. In order to add that info
+to the events dataframe, I have to grab the info from the events page itself.
+The following functions will allow me to create a datframe with the same link 
+so that it can be joined to the original events dataframe.
+"""    
+
+def get_missing_event_info(event_soup, event_link):
+    """
+    takes the link to an event page and returns a dataframe with the info 
+    that is not on the event dataframe by default.
+    input: soup of event webage, event_link
+    output: dataframe with missing info
+    """
+    div = event_soup.find(class_="details details_with_poster clearfix") #grab top header
+    info_elem = div.find('ul') #grab first list in top header
+    info_df = html_list_to_df(info_elem)
+    
+    #here I will clean up the missing info dataframe
+    relevent_df = info_df.loc[:, ['Location', 'Venue', 'Enclosure', 'first_elem']]
+    relevent_df.columns = ['location', 'venue', 'enclosure', 'start_time']
     relevent_df['link'] = event_link
-    relevent_df['start_time'] = start_time
     return relevent_df
-    
-def get_bout_df(fightCard_element):
-    """
-    input: html element with class 'fightCard'
-    output: pandas dataframe of the fight card
-    """
-    df = get_initial_bout_df(fightCard_element)
-    df['link'] = get_links(fightCard_element)
-    return df
 
-def get_initial_bout_df(fightCard_element):
+
+    
+
+
+
+
+def create_bouts_table(event_soup, event_link):
+    """
+    input: beautiful soup of the event page
+    output: dataframe with list of bouts and links to the bout pages.
+    """
+    
+    fightCard_element = event_soup.find(class_='fightCard')
+    
+    bouts_df = get_initial_bout_df(fightCard_element)
+    bouts_df['link'] = get_bout_links(fightCard_element)
+    bouts_df['event_link'] = event_link
+    
+    return bouts_df
+"""
+Parsing functions
+"""
+def get_initial_bouts_df(fightCard_element):
     """
     input: html element with class 'fightCard'
     output: dataframe of fightcard with no links
@@ -189,32 +139,95 @@ def get_initial_bout_df(fightCard_element):
     bout_list = list(filter(lambda item: item != '', bout_list)) #filter out blank elements ('')
     initial_list = group(bout_list, 10) #make into 2d array with 10 columns
     
-    df_card = pd.DataFrame(initial_list)
+    bouts_df = pd.DataFrame(initial_list)
     
-    df_card.columns = ['method', 
+    bouts_df.columns = ['method', 
                        'length', 
                        'order', 
-                       'fighter_1', 
-                       'record_1',
+                       'fighter_0', 
+                       'record_0',
                        'bout_type', 
-                       'weight', 
+                       'weight_class', 
                        'scheduled_rounds', 
-                       'fighter_2', 
-                       'record_2']
-    return df_card
+                       'fighter_1', 
+                       'record_1']
+    bouts_df = bouts_df.drop(labels=['record_0', 'record_1'], axis=1) #removing record info
+    return bouts_df
 
-def get_bout_links(fightCard_element):
+def get_bouts_links(fightCard_element):
     """
     input: html element with class 'fightCard'
     output: list of links (strings) for each bout
     """
-    bout_links = fightCard_element.find_all('a')
-    bout_links = [a.get('href') for a in bout_links]
+    bouts_links = fightCard_element.find_all('a')
+    bouts_links = [a.get('href') for a in bout_links]
     links_by_bout = group(bout_links, 3)
-    bout_links_only = [bout[1] for bout in links_by_bout]
+    bouts_links = [bout[1] for bout in links_by_bout]
     
-    return bout_links_only
+    return bouts_links_only
+    
+def get_missing_bout_info(bout_soup, bout_link):
+    """
+    takes the link to an event page and returns a dataframe with the info 
+    that is not on the event dataframe by default.
+    input: soup of event webage, event_link
+    output: dataframe with missing info
+    """
+    div = bout_soup.find(class_="details details_with_poster clearfix") #grab top header
+    info_elem = div.find('ul') #grab first list in top header
+    info_df = html_list_to_df(info_elem)
+    
+    #here I will clean up the missing info dataframe
+    relevent_df = info_df.loc[:, ['Referee', 'Pro/Am']]
+    relevent_df.columns = ['referee', 'pro_am']
+    relevent_df['link'] = bout_link
+    return relevent_df
 
+
+
+
+
+
+def create_fighter_instances_table(html_content, bout_link):
+    """
+    input: beautiful soup of the bout page
+    output: dataframe with one row for each fighter in the bout.
+    """
+    tables = pd.read_html(html_content)
+    #i'm going to grab the first table but it needs to be pivoted
+    initial_df = tables[0]
+    fighter_inst_df = pivot_instance_table(initial_df)
+    
+    #now I need to grab the links
+    fighter_inst_df['fighter_link'] = get_instance_links(html_content)
+    
+    #here I add the bout links
+    fighter_inst_df['bout_link'] = bout_link
+    
+    #Here I create a unique id for all the fighter instances
+    fighter_inst_df['instance_id'] = fighter_inst_df['bout_link'] + fighter_inst_df['fighter_link']
+    
+    return fighter_inst_df
+    
+"""
+Parsing functions
+"""
+def pivot_instance_table(initial_df):
+    """
+    input: initial dataframe taken from a bout page
+    ouptut: dataframe tilted 90 degrees with columns 0 and 4 
+            as the rows and column 2 as the column names
+    """
+    fighter_inst_df = pd.DataFrame([list(initial_df[0]), list(initial_df[4])])
+    fighter_inst_df.columns = list(initial_df[2])
+    return fighter_inst_df
+
+def get_instance_links(html_content):
+    bout_soup = BeautifulSoup(html_content, 'html.parser')
+    name_elem = bout_soup.find(class_="fighterNames botPad clearfix")
+    name_elem = name_elem.find_all('a')
+    links = [name.get('href') for name in name_elem]
+    return links
 
 
 
@@ -258,3 +271,55 @@ def is_ufc(event_name):
         return True
     else:
         return False
+    
+def html_list_to_df(info_elem):
+    """
+    input: info element from tapology. Should be a <ul> element
+    output: dataframe version of the list where the header of the dataframe becomes
+            the first column
+    """
+    info_list = to_info_list(info_elem)
+    info_dict = to_info_dict(info_list)
+    info_df = to_info_df(info_dict)
+    return info_df
+
+def to_info_list(info_elem):
+    """
+    input: info_list
+    output: info_list with no empty elements
+    """
+    info_list = info_elem.get_text().split('\n\n\n')#turn it into text and split into list
+    new_list = [] 
+    for item in info_list:
+        #fields with no info do not have a colon followed by a new line, so i will take those out
+        if ':\n' in item: 
+            new_list.append(item)   
+    #this creates a list with the info separated by empty string elements
+    info_list = '\n\n\n'.join(new_list).split('\n\n\n') 
+    #this removes those empty string elements
+    info_list = list(filter(lambda item: item != '', info_list)) 
+    return info_list
+
+def to_info_dict(info_list):
+    """
+    input: clean info_list
+    output: dictionary version of the info list
+    """
+    #take first element out from top of list
+    info_list=info_list
+    first_elem = info_list.pop(0)
+    #group it into a list of 2 elem lists
+    info_list = [elem.split(':\n') for elem in info_list]
+    #turn 2d list into dictionary for the create_info_df function
+    info_dict = dict(info_list) 
+    #now I want to add the first element back on
+    info_dict['first_elem'] = first_elem
+    return info_dict
+
+def to_info_df(info_dict):
+    """
+    Input: a dictionary made from an info dict 
+    Output: dataFrame 
+    """
+    info_df = pd.DataFrame(info_dict, index=[0]) #zipped the group into a dictionary, needs index param to work
+    return info_df
