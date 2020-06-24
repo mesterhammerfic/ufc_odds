@@ -22,19 +22,19 @@ def create_events_df(html_content):
     events_df = events_df[0] #grab the first dataframe in that list
     events_df = events_df.dropna(axis=1,how='all') #drop all rows with all null values    
     events_df.columns = ['event', 'name', 'date', 'bouts']#clean columns
-    
+
     #now I will get the links
     soup = BeautifulSoup(html_content, 'html.parser')
     results_table = soup.find('table')
     events_df['link'] = get_event_links(results_table) #add links to dataframe
-    
+
     # now I will filter out all events that are not from the UFC, 
     # have not happened yet, or were cancelled
     events_df = keep_ufc_events_only(events_df)
     events_df = keep_previous_events_only(events_df)
     events_df = remove_cancelled_events(events_df)
     
-    return events_df
+    return events_df.reset_index().drop(labels='index', axis=1)
 """
 Parsing functions
 """
@@ -67,7 +67,7 @@ def keep_previous_events_only(events_df):
     today = pd.to_datetime('today') #get today's date
     #get time delta for 1 day and subtract it from today
     yesterday = today - pd.to_timedelta(1, unit='days')
-    
+
     mask=events_df['date'] < yesterday
     previous_events = events_df[mask]
     previous_events.reset_index()
@@ -82,7 +82,7 @@ def remove_cancelled_events(events_df):
     not_cancelled = events_df[mask]
     not_cancelled.reset_index()
     return not_cancelled
-    
+
 """
 The previous function does not contain all event info simply because
 that info is not available on the search page. In order to add that info
@@ -101,7 +101,7 @@ def get_missing_event_info(event_soup, event_link):
     div = event_soup.find(class_="details details_with_poster clearfix") #grab top header
     info_elem = div.find('ul') #grab first list in top header
     info_df = html_list_to_df(info_elem)
-    
+
     #here I will clean up the missing info dataframe
     relevent_df = info_df.loc[:, ['Location', 'Venue', 'Enclosure', 'first_elem']]
     relevent_df.columns = ['location', 'venue', 'enclosure', 'start_time']
@@ -122,8 +122,8 @@ def create_bouts_table(event_soup, event_link):
     
     fightCard_element = event_soup.find(class_='fightCard')
     
-    bouts_df = get_initial_bout_df(fightCard_element)
-    bouts_df['link'] = get_bout_links(fightCard_element)
+    bouts_df = get_initial_bouts_df(fightCard_element)
+    bouts_df['link'] = get_bouts_links(fightCard_element)
     bouts_df['event_link'] = event_link
     
     return bouts_df
@@ -160,11 +160,11 @@ def get_bouts_links(fightCard_element):
     output: list of links (strings) for each bout
     """
     bouts_links = fightCard_element.find_all('a')
-    bouts_links = [a.get('href') for a in bout_links]
-    links_by_bout = group(bout_links, 3)
+    bouts_links = [a.get('href') for a in bouts_links]
+    links_by_bout = group(bouts_links, 3)
     bouts_links = [bout[1] for bout in links_by_bout]
     
-    return bouts_links_only
+    return bouts_links
     
 def get_missing_bout_info(bout_soup, bout_link):
     """
@@ -190,7 +190,7 @@ def get_missing_bout_info(bout_soup, bout_link):
 
 def create_fighter_instances_table(html_content, bout_link):
     """
-    input: beautiful soup of the bout page
+    input: html of the bout page
     output: dataframe with one row for each fighter in the bout.
     """
     tables = pd.read_html(html_content)
@@ -231,6 +231,49 @@ def get_instance_links(html_content):
 
 
 
+
+
+
+def create_fighters_table(html_content, bout_link):
+    """
+    input: beautiful soup of the bout page
+    output: dataframe with one row for each fighter in the bout.
+    """
+    tables = pd.read_html(html_content)
+    #i'm going to grab the first table but it needs to be pivoted
+    initial_df = tables[0]
+    fighter_inst_df = pivot_instance_table(initial_df)
+    
+    #now I need to grab the links
+    fighter_inst_df['fighter_link'] = get_instance_links(html_content)
+    
+    #here I add the bout links
+    fighter_inst_df['bout_link'] = bout_link
+    
+    #Here I create a unique id for all the fighter instances
+    fighter_inst_df['instance_id'] = fighter_inst_df['bout_link'] + fighter_inst_df['fighter_link']
+    
+    return fighter_inst_df
+    
+"""
+Parsing functions
+"""
+def pivot_instance_table(initial_df):
+    """
+    input: initial dataframe taken from a bout page
+    ouptut: dataframe tilted 90 degrees with columns 0 and 4 
+            as the rows and column 2 as the column names
+    """
+    fighter_inst_df = pd.DataFrame([list(initial_df[0]), list(initial_df[4])])
+    fighter_inst_df.columns = list(initial_df[2])
+    return fighter_inst_df
+
+def get_instance_links(html_content):
+    bout_soup = BeautifulSoup(html_content, 'html.parser')
+    name_elem = bout_soup.find(class_="fighterNames botPad clearfix")
+    name_elem = name_elem.find_all('a')
+    links = [name.get('href') for name in name_elem]
+    return links
 
 
 
