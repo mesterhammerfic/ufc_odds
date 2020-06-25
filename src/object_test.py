@@ -223,6 +223,10 @@ class bouts:
         relevent_df['link'] = bout_link
         return relevent_df
 
+    def update_missing_info(self, bout_soup, bout_link):
+        missing_info = self.get_missing_bout_info(bout_soup, bout_link)
+        self.table = self.table.combine_first(missing_info)
+        return None
 
 
 """
@@ -254,7 +258,7 @@ class fighter_instances:
         tables = pd.read_html(html_content)
         #i'm going to grab the first table but it needs to be pivoted
         initial_df = tables[0]
-        fighter_inst_df = pivot_instance_table(initial_df)
+        fighter_inst_df = self.pivot_instance_table(initial_df)
 
         #now I need to grab the links
         fighter_inst_df['fighter_link'] = self.get_instance_links(html_content)
@@ -298,43 +302,18 @@ class fighters:
     def __init__(self):
         self.table = pd.DataFrame()
         
-    def create_fighters_table(self, html_content, bout_link):
+    def create_fighters_table(self, fighter_soup, fighter_link):
         """
-        input: beautiful soup of the bout page
-        output: dataframe with one row for each fighter in the bout.
+        input: beautiful soup of the fighter page
+        output: dataframe with fighter info.
         """
-        tables = pd.read_html(html_content)
-        #i'm going to grab the first table but it needs to be pivoted
-        initial_df = tables[0]
-        fighter_inst_df = pivot_instance_table(initial_df)
-
-        #now I need to grab the links
-        fighter_inst_df['fighter_link'] = get_instance_links(html_content)
-
-        #here I add the bout links
-        fighter_inst_df['bout_link'] = bout_link
-
-        #Here I create a unique id for all the fighter instances
-        fighter_inst_df['instance_id'] = fighter_inst_df['bout_link'] + fighter_inst_df['fighter_link']
-
-        return fighter_inst_df
+        df = html_li_to_df(fighter_soup, 'details details_two_columns')
+        df['link'] = fighter_link
+        self.table = self.table, df
 
     """
     Parsing functions
     """
-    def pivot_instance_table(self, initial_df):
-        """
-        input: initial dataframe taken from a bout page
-        ouptut: dataframe tilted 90 degrees with columns 0 and 4 
-                as the rows and column 2 as the column names
-        """
-        fighter_inst_df = pd.DataFrame([list(initial_df[0]), list(initial_df[4])])
-        fighter_inst_df.columns = list(initial_df[2])
-        return fighter_inst_df
-
-
-
-
 
 
 
@@ -363,6 +342,12 @@ def open_tapology_link(link, user_agent = user_agent):
     response = requests.get(url, headers=headers)
     return response.content
 
+def tor_open_tapology_link(link, user_agent = user_agent):
+    url = 'https://www.tapology.com'+link
+    headers = {'User-Agent': user_agent} #set user agent
+    response = requests.get(url, headers=headers)
+    return response.content
+
 def is_ufc(event_name):
     """
     input: String of event name
@@ -375,91 +360,48 @@ def is_ufc(event_name):
         return True
     else:
         return False
+
+
+def html_li_to_df(soup, list_class):
+    """
+    input: beautiful soup object, the class assigned to the list you are looking for.
+    output: dataframe with values assigned to different items
+    """
+
+    ### Find the list element
+
+    div = soup.find(class_=list_class) #grab top header
+    event_info_elem = div.find('ul') #grab first list in top header
+
+    ### Find the list items in the element
+
+    html_list_items = event_info_elem.find_all('li')
+    html_list_items = [item.get_text() for item in html_list_items]
+    html_list_items
+
+    #Some rows in the list have two attributes separated by a '|', here we split them
+    column_value_strings = []
+    for row in html_list_items:
+        if '\n|' in row:
+            column_value_strings+=row.split('\n|')
+        else:
+            column_value_strings.append(row)
+
+    ### Insert a 'header' label.
+    #### The info in the header may be useful later on
+    item_list = [item.split(':\n') for item in column_value_strings]
+    item_list[0].insert(0, 'header')
+
+    ### Encapsulate the second element of each row in a list
+    #### This allows them to be made into a dataframe easily
+    item_list = [[item[0], [item[1]]] for item in item_list]
+
+
+    ### Convert to dataframe
+    list_df = pd.DataFrame(dict(item_list))
+
+    # clean up white space
+    list_df = list_df.applymap(lambda x: x.strip())
+    list_df.columns = [(col.strip()).replace(' ', '') for col in list_df.columns]
     
-def html_list_to_df(info_elem):
-    """
-    input: info element from tapology. Should be a <ul> element
-    output: dataframe version of the list where the header of the dataframe becomes
-            the first column
-    """
-    info_list = to_info_list(info_elem)
-    info_dict = to_info_dict(info_list)
-    info_df = to_info_df(info_dict)
-    return info_df
-
-def to_info_list(info_elem):
-    """
-    input: info_list
-    output: info_list with no empty elements
-    """
-    info_list = info_elem.get_text().split('\n\n\n')#turn it into text and split into list
-    new_list = [] 
-    for item in info_list:
-        #fields with no info do not have a colon followed by a new line, so i will take those out
-        if ':\n' in item: 
-            new_list.append(item)   
-    #this creates a list with the info separated by empty string elements
-    info_list = '\n\n\n'.join(new_list).split('\n\n\n') 
-    #this removes those empty string elements
-    info_list = list(filter(lambda item: item != '', info_list)) 
-    return info_list
-
-def to_info_dict(info_list):
-    """
-    input: clean info_list
-    output: dictionary version of the info list
-    """
-    #take first element out from top of list
-    info_list=info_list
-    first_elem = info_list.pop(0)
-    #group it into a list of 2 elem lists
-    info_list = [elem.split(':\n') for elem in info_list]
-    #turn 2d list into dictionary for the create_info_df function
-    info_dict = dict(info_list) 
-    #now I want to add the first element back on
-    info_dict['first_elem'] = first_elem
-    return info_dict
-
-def to_info_df(info_dict):
-    """
-    Input: a dictionary made from an info dict 
-    Output: dataFrame 
-    """
-    info_df = pd.DataFrame(info_dict, index=[0]) #zipped the group into a dictionary, needs index param to work
-    return info_df
-
-
-# def html_li_to_df(soup, list_class):
-#     """
-#     input: beautiful soup object, the class assigned to the list you are looking for.
-#     output: dataframe with values assigned to different items
-#     """
-
-#     ### Find the list element
-
-#     div = soup.find(class_="details details_with_poster clearfix") #grab top header
-#     event_info_elem = div.find('ul') #grab first list in top header
-
-#     ### Find the list items in the element
-
-#     list_items = event_info_elem.find_all('li')
-#     list_items = [item.get_text() for item in list_items]
-#     list_items
-
-#     ### Insert a 'header' label.
-#     #### The info in the header may be useful later on
-
-#     item_list = [item.split(':\n') for item in list_items]
-#     item_list[0].insert(0, 'header')
-#     item_list
-
-#     ### Encapsulate the second element of each row in a list
-#     #### This allows them to be made into a dataframe easily
-
-#     item_list = [[item[0], [item[1].strip()]] for item in item_list]
-#     item_list
-
-#     ### Convert to dataframe
-
-#     list_df = pd.DataFrame(dict(item_list))
-#     list_df
+    return list_df
