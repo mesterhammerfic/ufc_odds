@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import numpy as np
 import re
+from torrequest import TorRequest
 
 user_agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36'
 
@@ -17,16 +18,7 @@ class events:
     populated with the create or update methods.
     """
     def __init__(self):
-        self.table = pd.DataFrame({'event': [], 
-                                  'name': [], 
-                                  'date': [], 
-                                  'bouts': [], 
-                                  'link': [], 
-                                  'location': [], 
-                                  'venue': [],
-                                  'enclosure': [], 
-                                  'start_time': []
-                                  })
+        self.table = pd.DataFrame()
         
     def create_events_df(self, html_content):
         """
@@ -117,15 +109,12 @@ class events:
         input: soup of event webage, event_link
         output: dataframe with missing info
         """
-        div = event_soup.find(class_="details details_with_poster clearfix") #grab top header
-        info_elem = div.find('ul') #grab first list in top header
-        info_df = html_list_to_df(info_elem)
 
-        #here I will clean up the missing info dataframe
-        relevent_df = info_df.loc[:, ['Location', 'Venue', 'Enclosure', 'first_elem']]
-        relevent_df.columns = ['location', 'venue', 'enclosure', 'start_time']
-        relevent_df['link'] = event_link
-        return relevent_df
+        df = html_li_to_df(event_soup, "details details_with_poster clearfix", has_header=True)
+        df['link'] = event_link
+
+        df = df.loc[:,['Location', 'Enclosure', 'Venue', 'header']]
+        return df
     
     def update_missing_info(self, event_soup, event_link):
         missing_info = self.get_missing_event_info(event_soup, event_link)
@@ -139,19 +128,22 @@ class events:
 
 class bouts:
     def __init__(self):
-        self.table = pd.DataFrame({'method': [],
-                                 'length': [],
-                                 'order': [],
-                                 'fighter_0': [],
-                                 'bout_type': [],
-                                 'weight_class': [],
-                                 'scheduled_rounds': [],
-                                 'fighter_1': [],
-                                 'link': [],
-                                 'event_link': [],
-                                 'referee': [],
-                                 'pro_am': []})
+        self.table = pd.DataFrame()
     
+    def create_temp_bouts_table(self, event_soup, event_link):
+        """
+        input: beautiful soup of the event page
+        output: dataframe with list of bouts and links to the bout pages.
+        """
+
+        fightCard_element = event_soup.find(class_='fightCard')
+
+        bouts_df = self.get_initial_bouts_df(fightCard_element)
+        bouts_df['link'] = self.get_bouts_links(fightCard_element)
+        bouts_df['event_link'] = event_link
+
+        self.temp_table = bouts_df
+        return
     
     def create_bouts_table(self, event_soup, event_link):
         """
@@ -213,13 +205,9 @@ class bouts:
         input: soup of event webage, event_link
         output: dataframe with missing info
         """
-        div = bout_soup.find(class_="details details_with_poster clearfix") #grab top header
-        info_elem = div.find('ul') #grab first list in top header
-        info_df = html_list_to_df(info_elem)
-
-        #here I will clean up the missing info dataframe
+        class_="details details_with_poster clearfix"
+        info_df = html_li_to_df(bout_soup, class_, has_header=False)
         relevent_df = info_df.loc[:, ['Referee', 'Pro/Am']]
-        relevent_df.columns = ['referee', 'pro_am']
         relevent_df['link'] = bout_link
         return relevent_df
 
@@ -227,6 +215,15 @@ class bouts:
         missing_info = self.get_missing_bout_info(bout_soup, bout_link)
         self.table = self.table.combine_first(missing_info)
         return None
+    
+    def update_missing_temp_info(self, bout_soup, bout_link):
+        missing_info = self.get_missing_bout_info(bout_soup, bout_link)
+        self.table = self.table.combine_first(missing_info)
+        return None
+    
+    def combine_tables(self):
+        self.table = pd.concat([self.table, self.temp_table])
+    
 
 
 """
@@ -309,7 +306,7 @@ class fighters:
         """
         df = html_li_to_df(fighter_soup, 'details details_two_columns')
         df['link'] = fighter_link
-        self.table = self.table, df
+        self.table = self.table.combine_first(df)
 
     """
     Parsing functions
@@ -336,17 +333,6 @@ def group(a, group_size):
         final_list.append(a[index*group_size:index*group_size+group_size])
     return final_list
 
-def open_tapology_link(link, user_agent = user_agent):
-    url = 'https://www.tapology.com'+link
-    headers = {'User-Agent': user_agent} #set user agent
-    response = requests.get(url, headers=headers)
-    return response.content
-
-def tor_open_tapology_link(link, user_agent = user_agent):
-    url = 'https://www.tapology.com'+link
-    headers = {'User-Agent': user_agent} #set user agent
-    response = requests.get(url, headers=headers)
-    return response.content
 
 def is_ufc(event_name):
     """
@@ -362,7 +348,7 @@ def is_ufc(event_name):
         return False
 
 
-def html_li_to_df(soup, list_class):
+def html_li_to_df(soup, list_class, has_header=False):
     """
     input: beautiful soup object, the class assigned to the list you are looking for.
     output: dataframe with values assigned to different items
@@ -387,10 +373,12 @@ def html_li_to_df(soup, list_class):
         else:
             column_value_strings.append(row)
 
+    
+    item_list = [item.split(':\n') for item in column_value_strings]
     ### Insert a 'header' label.
     #### The info in the header may be useful later on
-    item_list = [item.split(':\n') for item in column_value_strings]
-    item_list[0].insert(0, 'header')
+    if has_header:
+        item_list[0].insert(0, 'header')
 
     ### Encapsulate the second element of each row in a list
     #### This allows them to be made into a dataframe easily
@@ -405,3 +393,65 @@ def html_li_to_df(soup, list_class):
     list_df.columns = [(col.strip()).replace(' ', '') for col in list_df.columns]
     
     return list_df
+
+
+
+
+"""
+===========================================================================================================
+Old, will be removed and replaced with new list parser found above
+===========================================================================================================
+"""
+
+def html_list_to_df(info_elem):
+    """
+    input: info element from tapology. Should be a <ul> element
+    output: dataframe version of the list where the header of the dataframe becomes
+            the first column
+    """
+    info_list = to_info_list(info_elem)
+    info_dict = to_info_dict(info_list)
+    info_df = to_info_df(info_dict)
+    return info_df
+
+def to_info_list(info_elem):
+    """
+    input: info_list
+    output: info_list with no empty elements
+    """
+    info_list = info_elem.get_text().split('\n\n\n')#turn it into text and split into list
+    new_list = [] 
+    for item in info_list:
+        #fields with no info do not have a colon followed by a new line, so i will take those out
+        if ':\n' in item: 
+            new_list.append(item)   
+    #this creates a list with the info separated by empty string elements
+    info_list = '\n\n\n'.join(new_list).split('\n\n\n') 
+    #this removes those empty string elements
+    info_list = list(filter(lambda item: item != '', info_list)) 
+    return info_list
+
+def to_info_dict(info_list):
+    """
+    input: clean info_list
+    output: dictionary version of the info list
+    """
+    #take first element out from top of list
+    info_list=info_list
+    first_elem = info_list.pop(0)
+    #group it into a list of 2 elem lists
+    info_list = [elem.split(':\n') for elem in info_list]
+    #turn 2d list into dictionary for the create_info_df function
+    info_dict = dict(info_list) 
+    #now I want to add the first element back on
+    info_dict['first_elem'] = first_elem
+    return info_dict
+
+def to_info_df(info_dict):
+    """
+    Input: a dictionary made from an info dict 
+    Output: dataFrame 
+    """
+    info_df = pd.DataFrame(info_dict, index=[0]) #zipped the group into a dictionary, needs index param to work
+    return info_df
+
