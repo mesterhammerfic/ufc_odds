@@ -7,22 +7,41 @@ from torrequest import TorRequest
 
 user_agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36'
 
-"""
-Tapology scraping functions
-    Take either soup objects or html (in the form of request.get(link).content) 
-    and return dataframes
-"""
-class events:
+class table_scraper():
     """
-    An instance of this class starts with an empty dataframe. The dataframe can be
-    populated with the create or update methods.
+    Contains a pandas DataFrame under the attribute 'table'. Specific scraping methods are added
+    onto child classes defined below.
     """
     def __init__(self):
         self.table = pd.DataFrame()
         
-    def create_events_df(self, html_content):
+    def export_csv(self, path):
+        self.table.to_csv(path)
+        
+    def import_csv(self, path, index)
         """
-        input: html of tapology events search results
+        input: path to file and the name of the index column
+        output: no return, assigns imported csv to class's 'table' attribute.
+        """
+        self.table = pd.read_csv(path, index_col)
+        
+
+"""
+===========================================================================================================
+Tapology scraping functions
+    Take either soup objects or html (in the form of request.get(link).content) 
+    and return dataframes
+===========================================================================================================
+"""
+
+class events(table_scraper):
+    """
+    An instance of this class starts with an empty dataframe. The dataframe can be
+    populated with the create import methods.
+    """ 
+    def create_table(self, html_content):
+        """
+        input: Search for an event on the tapology page
         output: dataframe of events
         """
         #the following three lines will get the intitial dataframe that lacks links
@@ -42,9 +61,12 @@ class events:
         events_df = self.keep_previous_events_only(events_df)
         events_df = self.remove_cancelled_events(events_df)
 
-        self.table = self.table.combine_first(events_df.reset_index())
+        events_df = events_df.set_index('link')
+        self.table = self.table.combine_first(events_df)
         
         return None
+    
+    
         
     """
     Parsing functions
@@ -93,6 +115,8 @@ class events:
         not_cancelled = events_df[mask]
         not_cancelled.reset_index()
         return not_cancelled
+    
+    
 
     """
     The previous function does not contain all event info simply because
@@ -111,10 +135,10 @@ class events:
         """
 
         df = html_li_to_df(event_soup, "details details_with_poster clearfix", has_header=True)
+        df = df.loc[:,['Location', 'Enclosure', 'Venue', 'header']]
         df['link'] = event_link
 
-        df = df.loc[:,['Location', 'Enclosure', 'Venue', 'header']]
-        return df
+        return df.set_index('link')
     
     def update_missing_info(self, event_soup, event_link):
         missing_info = self.get_missing_event_info(event_soup, event_link)
@@ -126,78 +150,73 @@ class events:
 ===========================================================================================================
 """
 
-class bouts:
-    def __init__(self):
-        self.table = pd.DataFrame()
+class bouts(table_scraper):
+    def add_to_table(self, event_soup, event_link):
+        temp_table = self.get_bouts_table(event_soup, event_link)
+        self.table = pd.concat([self.table, temp_table], join='inner')
     
-    def create_temp_bouts_table(self, event_soup, event_link):
+    def create_table(self, event_soup, event_link):
         """
         input: beautiful soup of the event page
         output: dataframe with list of bouts and links to the bout pages.
         """
-
-        fightCard_element = event_soup.find(class_='fightCard')
-
-        bouts_df = self.get_initial_bouts_df(fightCard_element)
-        bouts_df['link'] = self.get_bouts_links(fightCard_element)
-        bouts_df['event_link'] = event_link
-
-        self.temp_table = bouts_df
-        return
-    
-    def create_bouts_table(self, event_soup, event_link):
+        self.table = self.get_bouts_table(event_soup, event_link)
+        
+    def get_bouts_table(self, event_soup, event_link):
         """
         input: beautiful soup of the event page
         output: dataframe with list of bouts and links to the bout pages.
         """
+        #here's a table that will be ready to populate
+        df = pd.DataFrame()
+        
+        bout_info = event_soup.find(class_='fightCard')
+        li_bouts = bout_info.find_all('div', class_='fightCardBout')
+        for bout in li_bouts:
+            bout_dict = {}
+            
+            names = bout.find_all(class_='fightCardFighterName')
+            bout_dict['fighter_0'] = [names[0].get_text()]
+            bout_dict['fighter_1'] = [names[1].get_text()]
+            if bout.find(class_='result'):
+                bout_dict['method'] = [bout.find(class_='result').get_text()]
+                
+            if bout.find(class_='time'):
+                bout_dict['time'] = [bout.find(class_='time').get_text()]
+                
+            if bout.find(class_='weight'):
+                bout_dict['weight'] = [bout.find(class_='weight').get_text()]
+                
+            if bout.find(class_='billing'):
+                bout_dict['billing'] = [bout.find(class_='billing').get_text()]
+                
+            if bout.find(class_='fightCardBoutNumber'):
+                bout_dict['bout_number'] = [bout.find(class_='fightCardBoutNumber').get_text()]
+                
+            if bout.find(class_='billing'):
+                bout_dict['link'] = [bout.find(class_='billing')\
+                                     .find('a')\
+                                     .get('href')]
+                
+            bout_dict['event_link'] = [event_link]
 
-        fightCard_element = event_soup.find(class_='fightCard')
+            # now I can update my df with this info by turning it into a df and using combine first
+            bout_df = pd.DataFrame(bout_dict)
+            df = pd.concat([df, bout_df])
+            
+        df = df.applymap(lambda x: x.strip() if type(x)==str else x)
+        return df.set_index('link')
+    
 
-        bouts_df = self.get_initial_bouts_df(fightCard_element)
-        bouts_df['link'] = self.get_bouts_links(fightCard_element)
-        bouts_df['event_link'] = event_link
-
-        self.table = self.table.combine_first(bouts_df)
-        return
     """
     Parsing functions
     """
-    def get_initial_bouts_df(self, fightCard_element):
-        """
-        input: html element with class 'fightCard'
-        output: dataframe of fightcard with no links
-        """
-        bout_list = fightCard_element.get_text().split('\n') #get the fight card list and split it by the new lines
-        bout_list = list(filter(lambda item: item != '', bout_list)) #filter out blank elements ('')
-        initial_list = group(bout_list, 10) #make into 2d array with 10 columns
 
-        bouts_df = pd.DataFrame(initial_list)
-
-        bouts_df.columns = ['method', 
-                           'length', 
-                           'order', 
-                           'fighter_0', 
-                           'record_0',
-                           'bout_type', 
-                           'weight_class', 
-                           'scheduled_rounds', 
-                           'fighter_1', 
-                           'record_1']
-        bouts_df = bouts_df.drop(labels=['record_0', 'record_1'], axis=1) #removing record info
-        return bouts_df
-
-    def get_bouts_links(self, fightCard_element):
-        """
-        input: html element with class 'fightCard'
-        output: list of links (strings) for each bout
-        """
-        bouts_links = fightCard_element.find_all('a')
-        bouts_links = [a.get('href') for a in bouts_links]
-        links_by_bout = group(bouts_links, 3)
-        bouts_links = [bout[1] for bout in links_by_bout]
-
-        return bouts_links
-
+    def update_missing_info(self, bout_soup, bout_link):
+        missing_info = self.get_missing_bout_info(bout_soup, bout_link)
+        self.table = self.table.combine_first(missing_info)
+        
+    
     def get_missing_bout_info(self, bout_soup, bout_link):
         """
         takes the link to an event page and returns a dataframe with the info 
@@ -205,49 +224,45 @@ class bouts:
         input: soup of event webage, event_link
         output: dataframe with missing info
         """
-        class_="details details_with_poster clearfix"
-        info_df = html_li_to_df(bout_soup, class_, has_header=False)
+        list_class="details details_with_poster clearfix"
+        info_df = html_li_to_df(bout_soup, list_class, has_header=True)
         relevent_df = info_df.loc[:, ['Referee', 'Pro/Am']]
         relevent_df['link'] = bout_link
-        return relevent_df
-
-    def update_missing_info(self, bout_soup, bout_link):
-        missing_info = self.get_missing_bout_info(bout_soup, bout_link)
-        self.table = self.table.combine_first(missing_info)
-        return None
-    
-    def update_missing_temp_info(self, bout_soup, bout_link):
-        missing_info = self.get_missing_bout_info(bout_soup, bout_link)
-        self.table = self.table.combine_first(missing_info)
-        return None
-    
-    def combine_tables(self):
-        self.table = pd.concat([self.table, self.temp_table])
-    
-
-
-"""
-===========================================================================================================
-===========================================================================================================
-"""
-
-class fighter_instances:
-    def __init__(self):
-        self.table = pd.DataFrame({'Pro Record At Fight': [],
-                                 'Record After Fight': [],
-                                 'Betting Odds': [],
-                                 'Nationality': [],
-                                 'Fighting out of': [],
-                                 'Age at Fight': [],
-                                 'Weigh-In Result': [],
-                                 'Height': [],
-                                 'Reach': [],
-                                 'Gym': [],
-                                 'fighter_link': [],
-                                 'bout_link': [],
-                                 'instance_id': []})
         
-    def create_fighter_instances_table(self, html_content, bout_link):
+        #get ufcstats link
+        table = bout_soup.find(class_= list_class)
+        if table:    
+            icon_elem = table.find(alt='Ufc stats')
+            stats_link=icon_elem.parent.parent.get('href')
+            relevent_df['ufc_stats'] = stats_link
+        
+        return relevent_df.set_index('link')
+    
+    
+
+
+    
+
+
+"""
+===========================================================================================================
+===========================================================================================================
+"""
+
+class fighter_instances(table_scraper):
+    def add_to_table(self, html_content, bout_link):
+        temp_table = self.get_fighter_instances_table(html_content, bout_link)
+        self.table = pd.concat([self.table, temp_table], join='inner')
+    
+    def create_table(self, html_content, bout_link):
+        """
+        input: beautiful soup of the event page
+        output: dataframe with list of bouts and links to the bout pages.
+        """
+        self.table = self.get_fighter_instances_table(html_content, bout_link)
+        
+        
+    def get_fighter_instances_table(self, html_content, bout_link):
         """
         input: html of the bout page
         output: dataframe with one row for each fighter in the bout.
@@ -265,8 +280,9 @@ class fighter_instances:
 
         #Here I create a unique id for all the fighter instances
         fighter_inst_df['instance_id'] = fighter_inst_df['bout_link'] + fighter_inst_df['fighter_link']
-
-        self.table = self.table.combine_first(fighter_inst_df)
+        fighter_inst_df = fighter_inst_df.set_index('instance_id')
+        
+        return self.table.combine_first(fighter_inst_df)
 
     """
     Parsing functions
@@ -295,34 +311,37 @@ class fighter_instances:
 ===========================================================================================================
 ===========================================================================================================
 """
-class fighters:
-    def __init__(self):
-        self.table = pd.DataFrame()
+class fighters(table_scraper):
+    def add_to_table(self, fighter_soup, fighter_link):
+        temp_table = self.get_fighters_table(fighter_soup, fighter_link)
+        self.table = pd.concat([self.table, temp_table], join='inner')
+    
+    def create_table(self, fighter_soup, fighter_link):
+        """
+        input: beautiful soup of the event page
+        output: dataframe with list of bouts and links to the bout pages.
+        """
+        self.table = self.get_fighters_table(fighter_soup, fighter_link)
         
-    def create_fighters_table(self, fighter_soup, fighter_link):
+    def get_fighters_table(self, fighter_soup, fighter_link):
         """
         input: beautiful soup of the fighter page
         output: dataframe with fighter info.
         """
         df = html_li_to_df(fighter_soup, 'details details_two_columns')
         df['link'] = fighter_link
-        self.table = self.table.combine_first(df)
-
-    """
-    Parsing functions
-    """
-
-
+        df.set_index('link')
+        
+        return self.table.combine_first(df)
+    
+        
+        
 
 """
 ===========================================================================================================
-===========================================================================================================
-"""
-
-"""
 helper functions
+===========================================================================================================
 """
-
 def group(a, group_size):
     '''
     input: 1d array
@@ -348,19 +367,26 @@ def is_ufc(event_name):
         return False
 
 
-def html_li_to_df(soup, list_class, has_header=False):
+def html_li_to_df(soup, list_class, has_header=False, is_nested=True):
     """
     input: beautiful soup object, the class assigned to the list you are looking for.
     output: dataframe with values assigned to different items
+    
+    params:
+    has_header means that the list has useful information as the first li elemtn
+    
+    is_nested=True means there is a <ul> element nested inside the list_class element.
+    if False, take <li> straight from list_class element.
     """
 
     ### Find the list element
-
     div = soup.find(class_=list_class) #grab top header
-    event_info_elem = div.find('ul') #grab first list in top header
-
+    if is_nested:
+        event_info_elem = div.find('ul') #grab first list in top header
+    else:
+        event_info_elem = div
+    
     ### Find the list items in the element
-
     html_list_items = event_info_elem.find_all('li')
     html_list_items = [item.get_text() for item in html_list_items]
     html_list_items
@@ -372,16 +398,14 @@ def html_li_to_df(soup, list_class, has_header=False):
             column_value_strings+=row.split('\n|')
         else:
             column_value_strings.append(row)
-
     
     item_list = [item.split(':\n') for item in column_value_strings]
-    ### Insert a 'header' label.
-    #### The info in the header may be useful later on
+    ### Insert a 'header' label. The info in the header may be useful later on
     if has_header:
         item_list[0].insert(0, 'header')
-
-    ### Encapsulate the second element of each row in a list
-    #### This allows them to be made into a dataframe easily
+        
+    #Encapsulating the second element of each row in the list
+    # allows them to be made into a dataframe easily
     item_list = [[item[0], [item[1]]] for item in item_list]
 
 
@@ -394,64 +418,4 @@ def html_li_to_df(soup, list_class, has_header=False):
     
     return list_df
 
-
-
-
-"""
-===========================================================================================================
-Old, will be removed and replaced with new list parser found above
-===========================================================================================================
-"""
-
-def html_list_to_df(info_elem):
-    """
-    input: info element from tapology. Should be a <ul> element
-    output: dataframe version of the list where the header of the dataframe becomes
-            the first column
-    """
-    info_list = to_info_list(info_elem)
-    info_dict = to_info_dict(info_list)
-    info_df = to_info_df(info_dict)
-    return info_df
-
-def to_info_list(info_elem):
-    """
-    input: info_list
-    output: info_list with no empty elements
-    """
-    info_list = info_elem.get_text().split('\n\n\n')#turn it into text and split into list
-    new_list = [] 
-    for item in info_list:
-        #fields with no info do not have a colon followed by a new line, so i will take those out
-        if ':\n' in item: 
-            new_list.append(item)   
-    #this creates a list with the info separated by empty string elements
-    info_list = '\n\n\n'.join(new_list).split('\n\n\n') 
-    #this removes those empty string elements
-    info_list = list(filter(lambda item: item != '', info_list)) 
-    return info_list
-
-def to_info_dict(info_list):
-    """
-    input: clean info_list
-    output: dictionary version of the info list
-    """
-    #take first element out from top of list
-    info_list=info_list
-    first_elem = info_list.pop(0)
-    #group it into a list of 2 elem lists
-    info_list = [elem.split(':\n') for elem in info_list]
-    #turn 2d list into dictionary for the create_info_df function
-    info_dict = dict(info_list) 
-    #now I want to add the first element back on
-    info_dict['first_elem'] = first_elem
-    return info_dict
-
-def to_info_df(info_dict):
-    """
-    Input: a dictionary made from an info dict 
-    Output: dataFrame 
-    """
-    info_df = pd.DataFrame(info_dict, index=[0]) #zipped the group into a dictionary, needs index param to work
-    return info_df
 

@@ -37,5 +37,6 @@ def open_tapology_link(link, reset=True, async_=True):
             response = tr.get(url, headers=headers)
     else:
         response = tr.get(url, headers=headers)
-    
+    ip = tr.get('http://ipecho.net/plain')
+    print ("New Ip Address",ip.text)
     return response.content
