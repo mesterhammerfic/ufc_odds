@@ -18,12 +18,12 @@ class table_scraper():
     def export_csv(self, path):
         self.table.to_csv(path)
         
-    def import_csv(self, path, index)
+    def import_csv(self, path, index):
         """
         input: path to file and the name of the index column
         output: no return, assigns imported csv to class's 'table' attribute.
         """
-        self.table = pd.read_csv(path, index_col)
+        self.table = pd.read_csv(path, index_col = index)
         
 
 """
