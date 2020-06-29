@@ -6,3 +6,4 @@ previous_ufc.csv
 UFC_events_tapology.csv
 *.csv
 *.pyc
+local.py
