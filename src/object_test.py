@@ -4,8 +4,17 @@ import requests
 import numpy as np
 import re
 from torrequest import TorRequest
+import psycopg2
+from sqlalchemy import create_engine
 
-user_agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36'
+from src import local
+USER = local.user
+PASS = local.password
+HOST = local.host
+PORT = local.port
+
+
+engine = create_engine(f'postgresql://{USER}:{PASS}@{HOST}:{PORT}/ufc_odds')
 
 class table_scraper():
     """
@@ -24,6 +33,23 @@ class table_scraper():
         output: no return, assigns imported csv to class's 'table' attribute.
         """
         self.table = pd.read_csv(path, index_col = index)
+    
+    def export_sql(self, table_name, engine=engine):
+        """
+        exports the table to the postgres table under the table_name given
+        """
+        self.table.to_sql(name=table_name, 
+                          con=engine, 
+                          if_exists='append')
+        self.table = pd.DataFrame()
+    
+    def export_links(self, path, links_col='index'):
+        """
+        input: path to file and the name of the index column
+        output: no return, assigns imported csv to class's 'table' attribute.
+        """
+        index_df = pd.DataFrame(list(self.table.index))
+        index_df.to_csv(path)
         
 
 """

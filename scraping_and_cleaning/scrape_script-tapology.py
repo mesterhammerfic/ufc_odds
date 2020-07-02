@@ -18,15 +18,9 @@ from sqlalchemy import create_engine
 from src import local
 from src import ufcstats
 
-USER = local.user
-PASS = local.password
-HOST = local.host
-PORT = local.port
-
-
-engine = create_engine(f'postgresql://{USER}:{PASS}@{HOST}:{PORT}/ufc_odds')
 
 bouts = pd.read_csv('../data/remaining_bouts.csv', index_col=0)
+
 
 counter = 0
 

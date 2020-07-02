@@ -1,4 +1,6 @@
 import psycopg2
+from src import local
+
 
 PORT = local.port
 USER = local.user

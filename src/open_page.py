@@ -17,12 +17,12 @@ def get_user_agent(user_agent_list):
     return np.random.choice(user_agent_list)
 
 
-def open_tapology_link(link, reset=True, async_=True):
+def open_link(link, reset=True, async_=True, tr=tr):
     """
     input: the portion of a tapology webpage url after 'tapology.com'
     output: html content
     """
-    url = 'https://www.tapology.com'+link
+    url = link
     #set user agent
     headers = {'User-Agent': ua.random}
     
@@ -40,3 +40,13 @@ def open_tapology_link(link, reset=True, async_=True):
     ip = tr.get('http://ipecho.net/plain')
     print ("New Ip Address",ip.text)
     return response.content
+
+
+def open_tapology_link(link, reset=True, async_=True):
+    """
+    input: the portion of a tapology webpage url after 'tapology.com'
+    output: html content
+    """
+    url = 'https://www.tapology.com'+link
+    return open_link(url, reset=True, async_=True)
+    
