@@ -445,3 +445,30 @@ def html_li_to_df(soup, list_class, has_header=False, is_nested=True):
     return list_df
 
 
+def html_i_to_df(soup, list_class):
+    """
+    input: beautiful soup object, the class assigned to the list you are looking for.
+    output: dataframe with values assigned to different items
+    """
+    ### Find the list element
+    div = soup.find(class_=list_class) #grab top header
+    event_info_elem = div
+    
+    ### Find the list items in the element
+    html_list_items = event_info_elem.find_all('i', recursive=False)
+    html_list_items = [item.get_text() for item in html_list_items]
+    item_list = [item.split(':\n') for item in html_list_items]
+
+    #Encapsulating the second element of each row in the list
+    # allows them to be made into a dataframe easily
+    item_list = [[item[0], [item[1]]] for item in item_list]
+
+
+    ### Convert to dataframe
+    list_df = pd.DataFrame(dict(item_list))
+
+    # clean up white space
+    list_df = list_df.applymap(lambda x: x.strip())
+    list_df.columns = [(col.strip()).replace(' ', '') for col in list_df.columns]
+    
+    return list_df
