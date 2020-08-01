@@ -77,7 +77,7 @@ def scrape_bout_page(bout_soup, bout_link):
     #get details
     details = parse_details(bout_soup)
     #get rest of fight info
-    bouts = object_test.html_i_to_df(bout_soup, list_class="b-fight-details__text")
+    bouts = html_i_to_df(bout_soup, list_class="b-fight-details__text")
     bouts['details'] = details
     bouts['event_link'] = event_link
     bouts['link'] = bout_link
@@ -107,14 +107,14 @@ def parse_strikes(strikes_df, fighter_links, outcomes, bout_link):
     """
     input dataframe with striking bout info from ufcstats
     """
-    strikes = ufcstats.format_stats_table(strikes_df)   
+    strikes = format_stats_table(strikes_df)   
     #add missing columns and clean up
     strikes['bout_link'] = bout_link
     strikes['outcome'] = outcomes
     strikes = strikes.drop(labels = 'unnamed:_9_level_0', axis=1)
     #split
-    strikes_0 = strikes.applymap(lambda x: ufcstats.split(0, x))
-    strikes_1 = strikes.applymap(lambda x: ufcstats.split(1, x))
+    strikes_0 = strikes.applymap(lambda x: split(0, x))
+    strikes_1 = strikes.applymap(lambda x: split(1, x))
     strikes_0['fighter_link'] = fighter_links[0]
     strikes_1['fighter_link'] = fighter_links[1]
     
@@ -125,15 +125,15 @@ def parse_general(general_df, fighter_links, outcomes, bout_link):
     """
     input dataframe with general bout info from ufcstats
     """
-    general = ufcstats.format_stats_table(general_df)
+    general = format_stats_table(general_df)
     #add missing columns and clean up
     general['bout_id'] = bout_link
     general['outcome'] = outcomes
     general.columns = ['fighter', 'kd', 'sig_str', 'sig_str_prcnt', 'total_str', 'td_count',
                        'td_prcnt', 'sub_att', 'pass', 'rev', 'round', 'bout_id', 'outcome']
     #split
-    general_0 = general.applymap(lambda x: ufcstats.split(0, x))
-    general_1 = general.applymap(lambda x: ufcstats.split(1, x))
+    general_0 = general.applymap(lambda x: split(0, x))
+    general_1 = general.applymap(lambda x: split(1, x))
     general_0['fighter_link'] = fighter_links[0]
     general_1['fighter_link'] = fighter_links[1]
     
@@ -148,7 +148,7 @@ def event_scraper(event_soup, event_link):
     input: beautiful soup object of the event page
     output: dataframe with all relevent info
     """
-    info = object_test.html_li_to_df(event_soup, 'b-list__box-list', is_nested=False)
+    info = html_li_to_df(event_soup, 'b-list__box-list', is_nested=False)
     info['name'] = event_soup.find(class_='b-content__title-highlight').get_text().strip()
     info['link'] = event_link
     return info

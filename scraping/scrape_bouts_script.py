@@ -49,10 +49,10 @@ PORT = local.port
 engine = create_engine(f'postgresql://{USER}:{PASS}@{HOST}:{PORT}/ufc_odds')
 
 #load bookmarked list
-bouts = pd.read_csv('../data/remaining_bouts.csv', index_col=0)
+remaining_bouts= pd.read_csv('../data/remaining_bouts.csv')
 
 
-for bout_link in bouts['0']:
+for bout_link in remaining_bouts['0']:
     print('--------------------------------')
     print(bout_link)
     print('--------------------------------')
@@ -78,19 +78,19 @@ for bout_link in bouts['0']:
         list_of_tables = pd.read_html(bout_page)
         #strikes
         strikes = list_of_tables[3]
-        strikes_0, strikes_1 = ufcstats.parse_strikes(strikes_df, fighter_links, outcomes, bout_link)
+        strikes_0, strikes_1 = ufcstats.parse_strikes(strikes, fighter_links, outcomes, bout_link)
         #send to sql
         strikes_0.to_sql('strikes', engine, if_exists='append', index=False)
         strikes_1.to_sql('strikes', engine, if_exists='append', index=False)
         
         # general
         general = list_of_tables[1]
-        general_0, general_1 = ufcstats.parse_general(general_df, fighter_links, outcomes, bout_link)
+        general_0, general_1 = ufcstats.parse_general(general, fighter_links, outcomes, bout_link)
         #send to sql
         general_0.to_sql('general', engine, if_exists='append', index=False)
         general_1.to_sql('general', engine, if_exists='append', index=False)    
 
 
     #update remaining events
-    last_bout_index = bouts[bouts['0']==bout_link].index[0] #get index of last bout scraped
-    bouts.loc[last_bout_index+1:].to_csv('../data/remaining_bouts.csv')
+    last_bout_index = remaining_bouts[remaining_bouts['0']==bout_link].index[0] #get index of last bout scraped
+    remaining_bouts.loc[last_bout_index+1:].to_csv('../data/remaining_bouts.csv', index=False)
