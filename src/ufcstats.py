@@ -65,7 +65,11 @@ def html_i_to_df(soup, list_class):
     list_df.columns = [(col.strip()).replace(' ', '') for col in list_df.columns]
     
     return list_df
-
+"""
+===================================================================================
+Bout page functions
+===================================================================================
+"""
 def scrape_bout_page(bout_soup, bout_link):
     #get event link
     title = bout_soup.find(class_='b-content__title')
@@ -134,3 +138,17 @@ def parse_general(general_df, fighter_links, outcomes, bout_link):
     general_1['fighter_link'] = fighter_links[1]
     
     return general_0, general_1
+"""
+===================================================================================
+Event page functions
+===================================================================================
+"""
+def event_scraper(event_soup, event_link):
+    """
+    input: beautiful soup object of the event page
+    output: dataframe with all relevent info
+    """
+    info = object_test.html_li_to_df(event_soup, 'b-list__box-list', is_nested=False)
+    info['name'] = event_soup.find(class_='b-content__title-highlight').get_text().strip()
+    info['link'] = event_link
+    return info
