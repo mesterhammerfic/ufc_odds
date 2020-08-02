@@ -1,6 +1,7 @@
 import pandas as pd
 
 
+
 def split(fighter_index, value):
     """
     use this in an apply map function to get seperate fighters from a ufcstats table. 
@@ -52,6 +53,57 @@ def html_i_to_df(soup, list_class):
     html_list_items = [item.get_text() for item in html_list_items]
     item_list = [item.split(':\n') for item in html_list_items]
 
+    #Encapsulating the second element of each row in the list
+    # allows them to be made into a dataframe easily
+    item_list = [[item[0], [item[1]]] for item in item_list]
+
+
+    ### Convert to dataframe
+    list_df = pd.DataFrame(dict(item_list))
+
+    # clean up white space
+    list_df = list_df.applymap(lambda x: x.strip())
+    list_df.columns = [(col.strip()).replace(' ', '') for col in list_df.columns]
+    
+    return list_df
+
+def html_li_to_df(soup, list_class, has_header=False, is_nested=True):
+    """
+    input: beautiful soup object, the class assigned to the list you are looking for.
+    output: dataframe with values assigned to different items
+    
+    params:
+    has_header means that the list has useful information as the first li elemtn
+    
+    is_nested=True means there is a <ul> element nested inside the list_class element.
+    if False, take <li> straight from list_class element.
+    """
+
+    ### Find the list element
+    div = soup.find(class_=list_class) #grab top header
+    if is_nested:
+        event_info_elem = div.find('ul') #grab first list in top header
+    else:
+        event_info_elem = div
+    
+    ### Find the list items in the element
+    html_list_items = event_info_elem.find_all('li')
+    html_list_items = [item.get_text() for item in html_list_items]
+    html_list_items
+
+    #Some rows in the list have two attributes separated by a '|', here we split them
+    column_value_strings = []
+    for row in html_list_items:
+        if '\n|' in row:
+            column_value_strings+=row.split('\n|')
+        else:
+            column_value_strings.append(row)
+    
+    item_list = [item.split(':\n') for item in column_value_strings]
+    ### Insert a 'header' label. The info in the header may be useful later on
+    if has_header:
+        item_list[0].insert(0, 'header')
+        
     #Encapsulating the second element of each row in the list
     # allows them to be made into a dataframe easily
     item_list = [[item[0], [item[1]]] for item in item_list]
@@ -151,4 +203,18 @@ def event_scraper(event_soup, event_link):
     info = html_li_to_df(event_soup, 'b-list__box-list', is_nested=False)
     info['name'] = event_soup.find(class_='b-content__title-highlight').get_text().strip()
     info['link'] = event_link
+    return info
+"""
+===================================================================================
+Event page functions
+===================================================================================
+"""
+def fighter_scraper(fighter_soup, fighter_link):
+    """
+    input: beautiful soup object of the fighter page
+    output: dataframe with all relevent info
+    """
+    info = html_li_to_df(fighter_soup, 'b-list__box-list', is_nested=False)
+    info['name'] = fighter_soup.find(class_='b-content__title-highlight').get_text().strip()
+    info['link'] = fighter_link
     return info

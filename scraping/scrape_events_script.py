@@ -57,10 +57,15 @@ for event_link in remaining_events['0']:
     print(event_link)
     print('--------------------------------')
     # open page
-    event_page = op.open_link(event_link, async_=True)
+    try:
+        event_page = op.open_link(event_link, async_=True)
+    except ConnectionError as e:
+        print(e)
+        event_page = op.open_link(event_link, async_=False)
+        
     event_soup = BeautifulSoup(event_page)
     #check for tables
-    events = ufcstats.event_scraper(event, event_link)
+    events = ufcstats.event_scraper(event_soup, event_link)
     events.to_sql('events', engine, if_exists='append', index=False)
 
     #update remaining events

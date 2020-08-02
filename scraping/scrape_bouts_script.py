@@ -31,6 +31,8 @@ if module_path not in sys.path:
 from bs4 import BeautifulSoup
 import pandas as pd
 from sqlalchemy import create_engine
+from requests.exceptions import ConnectionError
+import time
 
 #custom functions
 from src import open_page as op
@@ -57,7 +59,13 @@ for bout_link in remaining_bouts['0']:
     print(bout_link)
     print('--------------------------------')
     # open page
-    bout_page = op.open_link(bout_link, async_=True)
+    try:
+        bout_page = op.open_link(bout_link, async_=True)
+    except ConnectionError as e:
+        print(e)
+        time.sleep(60)
+        bout_page = op.open_link(bout_link, async_=True)
+    
     bout_soup = BeautifulSoup(bout_page)
     #check for tables
     if bout_soup.find_all('table'):
@@ -72,8 +80,15 @@ for bout_link in remaining_bouts['0']:
         outcomes = ' '.join(outcomes)
         #get fighter links
         name_elems = bout_soup.find_all(class_='b-fight-details__person-name')
-        fighter_links = [elem.find('a').get('href') for elem in name_elems]
-
+        try:
+            fighter_links = [elem.find('a').get('href') for elem in name_elems]
+        except AttributeError:
+            fighter_links = []
+            for elem in name_elems:
+                if elem.find('a'):
+                    fighter_links.append((elem.find('a').get('href')))
+                else:
+                    fighter_links.append('no_link')
         ## scrape round tables info
         list_of_tables = pd.read_html(bout_page)
         #strikes
