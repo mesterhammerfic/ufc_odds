@@ -3,7 +3,7 @@ import pandas as pd
 """
 UFCStats.com Webscraping Functions
 
-These functions are used in the scapre scripts found in the /scraping/ folder of this repository
+These functions are used in the scrape scripts found in the /scraping/ folder of this repository
 """
 
 
