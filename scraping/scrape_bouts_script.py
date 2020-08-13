@@ -50,7 +50,7 @@ PORT = local.port
 #create engine
 engine = create_engine(f'postgresql://{USER}:{PASS}@{HOST}:{PORT}/ufc_odds')
 
-#load bookmarked list
+#load remaining_bouts table, contains links to all bouts not previously scraped
 remaining_bouts= pd.read_csv('../data/remaining_bouts.csv')
 
 
@@ -106,6 +106,6 @@ for bout_link in remaining_bouts['0']:
         general_1.to_sql('general', engine, if_exists='append', index=False)    
 
 
-    #update remaining events
+    #update remaining_bouts
     last_bout_index = remaining_bouts[remaining_bouts['0']==bout_link].index[0] #get index of last bout scraped
-    remaining_bouts.loc[last_bout_index+1:].to_csv('../data/remaining_bouts.csv', index=False)
+    remaining_bouts.loc[last_bout_index+1:].to_csv('../data/remaining_bouts.csv', index=False) #replace previous list
