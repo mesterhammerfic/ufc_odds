@@ -19,8 +19,6 @@ If this script throws an error, one can restart the script and it will continue 
 the appropriate tables based on the remaining bouts csv.
 """
 
-
-
 import os
 import sys
 
@@ -40,8 +38,7 @@ from src import local
 from src import ufcstats
 
 
-
-# import local postgres info
+# set up local postgres info
 USER = local.user
 PASS = local.password
 HOST = local.host
@@ -51,9 +48,9 @@ PORT = local.port
 engine = create_engine(f'postgresql://{USER}:{PASS}@{HOST}:{PORT}/ufc_odds')
 
 #load remaining_bouts table, contains links to all bouts not previously scraped
-remaining_bouts= pd.read_csv('../data/remaining_bouts.csv')
+remaining_bouts = pd.read_csv('../data/remaining_bouts.csv')
 
-
+# Scrape bout links
 for bout_link in remaining_bouts['0']:
     print('--------------------------------')
     print(bout_link)
@@ -65,19 +62,19 @@ for bout_link in remaining_bouts['0']:
         print(e)
         time.sleep(60)
         bout_page = op.open_link(bout_link, async_=True)
-    
     bout_soup = BeautifulSoup(bout_page)
+
     #check for tables
     if bout_soup.find_all('table'):
         #scrape bout table info
         bouts = ufcstats.scrape_bout_page(bout_soup, bout_link)
         bouts.to_sql('bouts', engine, if_exists='append', index=False)
         
-        
         #get outcome info
         outcomes = bout_soup.find_all(class_='b-fight-details__person')
         outcomes = [outcome.find('i').get_text().strip() for outcome in outcomes]
         outcomes = ' '.join(outcomes)
+        
         #get fighter links
         name_elems = bout_soup.find_all(class_='b-fight-details__person-name')
         try:
@@ -89,8 +86,10 @@ for bout_link in remaining_bouts['0']:
                     fighter_links.append((elem.find('a').get('href')))
                 else:
                     fighter_links.append('no_link')
+                
         ## scrape round tables info
         list_of_tables = pd.read_html(bout_page)
+        
         #strikes
         strikes = list_of_tables[3]
         strikes_0, strikes_1 = ufcstats.parse_strikes(strikes, fighter_links, outcomes, bout_link)
@@ -104,7 +103,6 @@ for bout_link in remaining_bouts['0']:
         #send to sql
         general_0.to_sql('general', engine, if_exists='append', index=False)
         general_1.to_sql('general', engine, if_exists='append', index=False)    
-
 
     #update remaining_bouts
     last_bout_index = remaining_bouts[remaining_bouts['0']==bout_link].index[0] #get index of last bout scraped
