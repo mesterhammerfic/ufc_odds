@@ -15,6 +15,10 @@ Example of a bout page: http://www.ufcstats.com/fight-details/a2e34655a41ba45c
 ===================================================================================
 """
 def scrape_bout_page(bout_soup, bout_link):
+    """
+    input: beautiful soup of a ufcstats fight details page
+    output: a dataframe with all bout info, ready to be sent to sql database
+    """
     #get event link
     title = bout_soup.find(class_='b-content__title')
     event_link = title.find('a').get('href')
